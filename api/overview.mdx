@@ -1,0 +1,53 @@
+---
+title: "Ladder HTTP API: endpoints, auth, and base URL"
+description: "Ladder exposes HTTP endpoints for proxying websites, fetching raw HTML, and inspecting the active ruleset. No API key required; Basic Auth is optional."
+---
+
+Ladder's HTTP API lets you proxy websites, retrieve raw HTML, and inspect your active ruleset — all over plain HTTP. By default, no authentication is required, but you can enable Basic Auth via the `USERPASS` environment variable to secure your instance.
+
+## Base URL
+
+```
+http://localhost:8080
+```
+
+The port defaults to `8080` and can be changed with the `PORT` environment variable or the `-p` flag.
+
+## Authentication
+
+If `USERPASS` is not set, all endpoints are open. When `USERPASS=username:password` is configured, every request requires HTTP Basic Auth:
+
+```bash
+curl -u admin:secretpassword http://localhost:8080/api/https://www.example.com
+```
+
+## Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/{url}` | Proxy a website with full HTML rewriting for browsing |
+| `GET` | `/api/{url}` | Fetch a site and return JSON with headers and body |
+| `POST` | `/api` | Fetch a site via JSON request body |
+| `GET` | `/raw/{url}` | Fetch raw HTML without URL rewriting |
+| `GET` | `/ruleset` | Return the active ruleset as YAML |
+
+<Note>
+Query parameters appended to your request are forwarded to the target site. For example, `http://localhost:8080/api/https://example.com?page=2` will request `https://example.com?page=2`.
+</Note>
+
+## Explore the endpoints
+
+<CardGroup cols={2}>
+  <Card title="Proxy endpoint" icon="globe" href="/api/proxy">
+    Fetch a site and get back the HTML body plus request and response headers as JSON.
+  </Card>
+  <Card title="Raw endpoint" icon="code" href="/api/raw">
+    Retrieve the raw HTML of a page without any URL rewriting applied.
+  </Card>
+  <Card title="Ruleset endpoint" icon="list-check" href="/api/ruleset">
+    Inspect the active ruleset or share it with other Ladder instances.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration/environment-variables">
+    Configure the port, auth, user agent, and more via environment variables.
+  </Card>
+</CardGroup>

@@ -1,0 +1,150 @@
+---
+title: "Install Ladder via Docker, Helm, or binary download"
+description: "Install Ladder as a Docker container, a Docker Compose stack, a Kubernetes Helm release, or a pre-built binary on Linux, macOS, or Windows."
+---
+
+Ladder ships as a single static binary with no external runtime dependencies. You can run it directly, in a Docker container, as a Docker Compose stack, or as a Kubernetes Helm release. Choose the method that best fits your environment.
+
+<Warning>
+  If your Ladder instance will be publicly accessible, enable Basic Auth by setting the `USERPASS` environment variable (format: `username:password`). Without it, anyone who can reach your instance can use it to proxy arbitrary content through your server. See [Security](/deployment/security).
+</Warning>
+
+## Installation methods
+
+<Tabs>
+  <Tab title="Docker">
+    Pull and run the official container image from the GitHub Container Registry:
+
+    ```bash
+    docker run -p 8080:8080 -d \
+      --env RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml \
+      --name ladder \
+      ghcr.io/everywall/ladder:latest
+    ```
+
+    Images are published for `amd64` and `arm64`. Replace the `RULESET` URL with the path to your own ruleset file if you have one, or mount a local file:
+
+    ```bash
+    docker run -p 8080:8080 -d \
+      -v /path/to/your/ruleset.yaml:/app/ruleset.yaml \
+      --env RULESET=/app/ruleset.yaml \
+      --name ladder \
+      ghcr.io/everywall/ladder:latest
+    ```
+
+    See [Docker deployment](/deployment/docker) for a full list of supported environment variables and volume mounts.
+  </Tab>
+
+  <Tab title="Docker Compose">
+    Download the official `docker-compose.yaml` and start the stack:
+
+    ```bash
+    curl https://raw.githubusercontent.com/everywall/ladder/main/docker-compose.yaml \
+      --output docker-compose.yaml
+    docker-compose up -d
+    ```
+
+    The default `docker-compose.yaml` includes an optional FlareSolverr service for Cloudflare bypass. To enable it, uncomment the `FLARESOLVERR_HOST` environment variable in the `ladder` service and the `flaresolverr` service definition.
+
+    ```yaml
+    services:
+      ladder:
+        image: ghcr.io/everywall/ladder:latest
+        environment:
+          - PORT=8080
+          - RULESET=/app/ruleset.yaml
+          - LOG_URLS=true
+          # Uncomment to enable FlareSolverr:
+          # - FLARESOLVERR_HOST=http://flaresolverr:8191
+        ports:
+          - "8080:8080"
+        volumes:
+          - ./ruleset.yaml:/app/ruleset.yaml
+
+      # Uncomment to enable FlareSolverr:
+      # flaresolverr:
+      #   image: ghcr.io/flaresolverr/flaresolverr:latest
+      #   ports:
+      #     - "8191:8191"
+    ```
+
+    See [Docker Compose deployment](/deployment/docker) for the complete reference.
+  </Tab>
+
+  <Tab title="Binary">
+    Download the pre-built binary for your platform from [GitHub Releases](https://github.com/everywall/ladder/releases/latest), then run it directly:
+
+    ```bash
+    # Linux / macOS — after downloading and unpacking:
+    ./ladder -r https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml
+    ```
+
+    Binaries are available for Linux (amd64, arm64), macOS, and Windows (untested). The `-r` flag points to a ruleset file, directory, or URL. Ladder listens on port `8080` by default.
+
+    See [Binary deployment](/deployment/binary) for checksum verification and systemd service setup.
+  </Tab>
+
+  <Tab title="Helm">
+    Deploy Ladder to Kubernetes using the official Helm chart. See the [Helm deployment](/deployment/helm) page for the full values reference and upgrade instructions.
+
+    ```bash
+    helm install ladder ./helm-chart
+    ```
+
+    The Helm chart supports all environment variables as chart values and includes an optional FlareSolverr dependency. See [Helm deployment](/deployment/helm) for details.
+  </Tab>
+</Tabs>
+
+## CLI flags
+
+When running the binary directly, Ladder accepts the following flags. Environment variables set equivalent options and are applied when the corresponding flag is not provided.
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--port` | `-p` | `8080` (or `PORT` env) | Port the server listens on. |
+| `--prefork` | `-P` | `false` (or `PREFORK` env) | Spawn multiple server processes to use all CPU cores. |
+| `--ruleset` | `-r` | `RULESET` env | Path to a ruleset YAML file, a directory of YAML files, or a URL. Overrides the `RULESET` environment variable. |
+| `--merge-rulesets` | — | — | Compile a directory of YAML files into a single `ruleset.yaml`. Requires `--ruleset`. |
+| `--merge-rulesets-gzip` | — | — | Compile a directory of YAML files into a gzip-compressed `ruleset.gz`. Requires `--ruleset`. |
+| `--merge-rulesets-output` | — | stdout | Output file path for `--merge-rulesets` or `--merge-rulesets-gzip`. |
+
+### Examples
+
+Start Ladder on a custom port with a local ruleset:
+
+```bash
+./ladder --port 9090 --ruleset /etc/ladder/ruleset.yaml
+```
+
+Merge a directory of ruleset files into a single file:
+
+```bash
+./ladder --ruleset /etc/ladder/rules/ --merge-rulesets --merge-rulesets-output /etc/ladder/ruleset.yaml
+```
+
+Merge and compress to gzip:
+
+```bash
+./ladder --ruleset /etc/ladder/rules/ --merge-rulesets-gzip --merge-rulesets-output /etc/ladder/ruleset.gz
+```
+
+<Tip>
+  Use `--merge-rulesets` in a CI pipeline to compile per-domain YAML files from a rules repository into a single file that Ladder loads at runtime. See [Ruleset merging](/advanced/ruleset-merging) for the full workflow.
+</Tip>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Environment variables" icon="sliders" href="/configuration/environment-variables">
+    Configure user agent, Basic Auth, allowed domains, FlareSolverr, and more.
+  </Card>
+  <Card title="Ruleset configuration" icon="list-check" href="/configuration/ruleset">
+    Define per-domain rules for header overrides, HTML injection, and regex rewrites.
+  </Card>
+  <Card title="Security" icon="lock" href="/deployment/security">
+    Secure your public instance with Basic Auth and domain restrictions.
+  </Card>
+  <Card title="API reference" icon="code" href="/api/overview">
+    Use the REST API to proxy pages and fetch raw HTML programmatically.
+  </Card>
+</CardGroup>

@@ -1,0 +1,89 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "Ladder",
+  "projectDescription": "A self-hosted HTTP proxy that removes CORS headers, modifies HTML, and simulates different client environments to help developers test and analyze web content delivery.",
+  "theme": "aspen",
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment-variables",
+              "configuration/ruleset",
+              "configuration/domain-restrictions"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/flaresolverr",
+              "advanced/custom-form",
+              "advanced/ruleset-merging"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/helm",
+              "deployment/binary",
+              "deployment/security"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/overview",
+              "api/proxy",
+              "api/raw",
+              "api/ruleset"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "HTTP proxy that removes and modifies CORS headers",
+    "Domain-based ruleset system for custom request/response modifications",
+    "HTML injection and regex-based content rewriting",
+    "Custom User-Agent and X-Forwarded-For header spoofing",
+    "FlareSolverr integration for Cloudflare bypass",
+    "Basic Auth protection for public instances",
+    "Docker, Helm, and binary deployment options",
+    "REST API for programmatic access",
+    "Domain allowlist for restricting proxy usage",
+    "Ruleset sharing and merging between instances"
+  ],
+  "publicApiSurface": [
+    "GET /{url} — Proxy a website through Ladder with HTML rewriting",
+    "GET /api/{url} — Fetch a site and return JSON with headers and body",
+    "POST /api — Fetch a site via JSON body request",
+    "GET /raw/{url} — Fetch raw HTML without any rewriting",
+    "GET /ruleset — Expose the current loaded ruleset as YAML",
+    "--port / -p — Port to listen on (default: 8080)",
+    "--ruleset / -r — Path, directory, or URL to a ruleset YAML",
+    "--merge-rulesets — Compile a directory of YAML files into a single ruleset",
+    "--merge-rulesets-gzip — Compile rulesets into a gzip-compressed file",
+    "--prefork / -P — Spawn multiple server processes"
+  ]
+}

@@ -1,0 +1,151 @@
+---
+title: "FlareSolverr integration for Cloudflare bypass"
+description: "Connect Ladder to a FlareSolverr instance to obtain bypass cookies for Cloudflare-protected sites and other advanced bot-detection challenges."
+---
+
+Ladder can delegate cookie acquisition to [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr), a headless-browser proxy that solves Cloudflare challenges on your behalf. When a domain rule has `useFlareSolverr: true`, Ladder calls the FlareSolverr API at `/v1`, receives the solved cookies, and forwards them with the real request — all transparently.
+
+## What FlareSolverr does
+
+FlareSolverr runs a headless Chromium browser and loads the target page to completion, allowing it to solve JavaScript challenges, CAPTCHA-free Cloudflare "I'm under attack" pages, and browser fingerprinting checks. Once the browser session is established, FlareSolverr returns the resulting cookies. Ladder injects those cookies into its own HTTP request to retrieve the actual page content.
+
+You only need FlareSolverr when a site actively rejects non-browser clients. For most sites, Ladder's built-in user-agent spoofing and header overrides are sufficient. Enable FlareSolverr selectively to avoid the extra latency and resource cost.
+
+## Environment variable
+
+| Variable | Description | Default |
+|---|---|---|
+| `FLARESOLVERR_HOST` | Base URL of your FlareSolverr instance | _(unset)_ |
+
+When `FLARESOLVERR_HOST` is not set, Ladder skips FlareSolverr even if a ruleset entry has `useFlareSolverr: true`.
+
+## How it works
+
+<Steps>
+  <Step title="Rule matched">
+    Ladder matches the requested URL against your ruleset and finds a rule with `useFlareSolverr: true`.
+  </Step>
+  <Step title="Cookie request">
+    Ladder posts a `request.get` command to `FLARESOLVERR_HOST/v1` with the target URL and a 60-second timeout.
+  </Step>
+  <Step title="Challenge solved">
+    FlareSolverr opens the URL in a headless browser, waits for Cloudflare to clear, and returns the session cookies.
+  </Step>
+  <Step title="Proxied request">
+    Ladder appends the FlareSolverr cookies to the outgoing request (merged with any `cookie` header already in the rule) and fetches the page normally.
+  </Step>
+</Steps>
+
+## Per-domain configuration
+
+Enable FlareSolverr for a specific domain by adding `useFlareSolverr: true` to its ruleset entry. Domains without this flag are never routed through FlareSolverr, even when `FLARESOLVERR_HOST` is configured.
+
+```yaml
+# cloudflare-protected site — uses FlareSolverr
+- domain: cloudflare-protected-site.com
+  useFlareSolverr: true
+  headers:
+    user-agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+# regular site — standard Ladder proxy, no FlareSolverr
+- domain: regular-site.com
+  headers:
+    user-agent: "Custom User Agent 1.0"
+```
+
+<Tip>
+  Set `useFlareSolverr: false` explicitly in entries you want to exclude, so your intent is clear when reviewing the ruleset. See the [ruleset reference](/configuration/ruleset) for all available rule fields.
+</Tip>
+
+## Setup
+
+### Docker Compose (recommended)
+
+The following `docker-compose.yaml` runs both Ladder and FlareSolverr as a single stack. Set `FLARESOLVERR_HOST` to the FlareSolverr container's internal address so Ladder can reach it on the Docker network.
+
+```yaml
+version: '3'
+services:
+  ladder:
+    image: ghcr.io/everywall/ladder:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml
+      - FLARESOLVERR_HOST=http://flaresolverr:8191
+    depends_on:
+      - flaresolverr
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    ports:
+      - "8191:8191"
+    environment:
+      - LOG_LEVEL=info
+      - LOG_HTML=false
+      - CAPTCHA_SOLVER=none
+      - TZ=UTC
+    restart: unless-stopped
+```
+
+Start the stack:
+
+```bash
+docker-compose up -d
+```
+
+### Running FlareSolverr separately
+
+If you already have FlareSolverr running elsewhere, start it with Docker and point Ladder at it with `FLARESOLVERR_HOST`:
+
+```bash
+# Start FlareSolverr
+docker run -d \
+  --name flaresolverr \
+  -p 8191:8191 \
+  ghcr.io/flaresolverr/flaresolverr:latest
+
+# Start Ladder pointing at FlareSolverr
+FLARESOLVERR_HOST=http://localhost:8191 ./ladder
+```
+
+## Use cases
+
+<AccordionGroup>
+  <Accordion title="Cloudflare-protected sites">
+    Sites behind Cloudflare's "Under Attack Mode" or "Managed Challenge" require a real browser to complete the JS challenge before serving content. FlareSolverr handles that handshake and provides the `cf_clearance` cookie Ladder needs.
+  </Accordion>
+  <Accordion title="JavaScript challenges">
+    Some publishers use custom JS challenges outside of Cloudflare. FlareSolverr's headless browser executes the JavaScript fully before returning cookies.
+  </Accordion>
+  <Accordion title="Dynamic content loading">
+    Sites that render meaningful content only after JS execution benefit from FlareSolverr fetching the fully-rendered DOM state and providing the necessary session cookies.
+  </Accordion>
+  <Accordion title="Advanced bot detection and fingerprinting">
+    Sites using behavioral fingerprinting or TLS fingerprint checks may block direct HTTP clients. FlareSolverr's Chromium instance presents a realistic browser profile that passes these checks.
+  </Accordion>
+</AccordionGroup>
+
+## Important notes
+
+<Warning>
+  FlareSolverr runs a full headless Chromium browser. Each request that invokes it consumes significantly more CPU and memory than a standard Ladder proxy request. On resource-constrained hosts, enabling it for high-traffic domains can exhaust system memory. Only set `useFlareSolverr: true` for domains that genuinely require it.
+</Warning>
+
+- FlareSolverr adds latency on every request for a configured domain because Ladder must wait for the headless browser to complete the challenge before making the real request.
+- Make sure FlareSolverr is reachable at `FLARESOLVERR_HOST` before Ladder starts. If the FlareSolverr request fails at runtime, Ladder logs the error and continues without the cookies — the proxy request will likely fail for that domain.
+- FlareSolverr does not bypass CAPTCHA challenges that require human interaction (`CAPTCHA_SOLVER=none` is the default).
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Ruleset configuration" icon="list-check" href="/configuration/ruleset">
+    Full reference for ruleset fields including `useFlareSolverr`.
+  </Card>
+  <Card title="Environment variables" icon="sliders" href="/configuration/environment-variables">
+    All environment variables, including `FLARESOLVERR_HOST`.
+  </Card>
+  <Card title="Docker deployment" icon="docker" href="/deployment/docker">
+    Docker and Docker Compose deployment reference.
+  </Card>
+</CardGroup>

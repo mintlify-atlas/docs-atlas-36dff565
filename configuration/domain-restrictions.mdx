@@ -1,0 +1,113 @@
+---
+title: "Limit which domains Ladder is allowed to proxy"
+description: "Use ALLOWED_DOMAINS and ALLOWED_DOMAINS_RULESET to restrict which upstream hostnames Ladder will fetch. Prevent unauthorized use on shared or public instances."
+---
+
+By default, Ladder proxies any URL it receives. In environments where the instance is shared or publicly accessible, you can restrict which upstream domains Ladder will fetch. Two environment variables control this: `ALLOWED_DOMAINS` and `ALLOWED_DOMAINS_RULESET`. When both are empty, no domain restriction is applied.
+
+<Warning>
+  If your Ladder instance is publicly accessible on the internet, configure domain restrictions alongside Basic Auth (`USERPASS`). Without them, anyone can use your proxy to fetch arbitrary content.
+</Warning>
+
+## How it works
+
+When Ladder receives a request, it extracts the hostname from the target URL and checks it against the combined allow-list before making any upstream request.
+
+The allow-list is built by merging two sources at startup:
+
+1. The comma-separated list in `ALLOWED_DOMAINS`.
+2. All domains (and additional domains) from the loaded ruleset, when `ALLOWED_DOMAINS_RULESET=true`.
+
+The check uses prefix matching: `example.com` in the allow-list permits `example.com`, `www.example.com`, and any other subdomain. If the allow-list is empty (both sources produce no entries), all domains are permitted.
+
+If a request targets a hostname not in the allow-list, Ladder returns an error and does not make the upstream request.
+
+## ALLOWED_DOMAINS
+
+Set `ALLOWED_DOMAINS` to a comma-separated list of hostnames you want to permit:
+
+```bash
+ALLOWED_DOMAINS=example.com,example.org ./ladder
+```
+
+Or in Docker:
+
+```bash
+docker run -p 8080:8080 \
+  -e ALLOWED_DOMAINS=example.com,example.org \
+  ghcr.io/everywall/ladder:latest
+```
+
+<Note>
+  Entries are matched by prefix, so `example.com` also allows `www.example.com` and `news.example.com`. There is no wildcard syntax — add each base domain you want to permit.
+</Note>
+
+## ALLOWED_DOMAINS_RULESET
+
+Set `ALLOWED_DOMAINS_RULESET=true` to automatically allow every domain defined in the loaded ruleset. Ladder extracts both `domain` and `domains` fields from every rule and adds them to the allow-list.
+
+```bash
+RULESET=/etc/ladder/rules.yaml \
+ALLOWED_DOMAINS_RULESET=true \
+./ladder
+```
+
+This is a convenient way to keep the allow-list in sync with your ruleset without maintaining a separate list of domains.
+
+<Tip>
+  Combine `ALLOWED_DOMAINS_RULESET=true` with a well-maintained ruleset to allow only the sites you have explicitly configured proxy rules for.
+</Tip>
+
+## Combining both variables
+
+`ALLOWED_DOMAINS` and `ALLOWED_DOMAINS_RULESET` are additive. When both are set, their domain lists are joined together and the proxy accepts any hostname from either source.
+
+```bash
+RULESET=/etc/ladder/rules.yaml \
+ALLOWED_DOMAINS=internal.corp.com \
+ALLOWED_DOMAINS_RULESET=true \
+./ladder
+```
+
+In this example, Ladder allows `internal.corp.com` (from `ALLOWED_DOMAINS`) as well as every domain defined in `rules.yaml` (from `ALLOWED_DOMAINS_RULESET`).
+
+## docker-compose example
+
+```yaml
+services:
+  ladder:
+    image: ghcr.io/everywall/ladder:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml
+      - ALLOWED_DOMAINS=example.com,example.org
+      - ALLOWED_DOMAINS_RULESET=true
+      - USERPASS=admin:s3cr3t
+    restart: unless-stopped
+```
+
+## Error behavior
+
+When a request targets a domain not in the allow-list, Ladder returns an HTTP 500 response with an error message of the form:
+
+```
+domain not allowed. <hostname> not in [<allow-list>]
+```
+
+The error is also written to the server log. No upstream request is made.
+
+<Note>
+  The error is returned as a plain text body with a 500 status code. If you are using Ladder programmatically via the API, check for this message in the response body when debugging domain restriction issues.
+</Note>
+
+## Summary
+
+| Scenario | Configuration |
+|---|---|
+| No restriction (default) | Leave both variables unset or empty. |
+| Restrict to specific domains | `ALLOWED_DOMAINS=example.com,example.org` |
+| Restrict to ruleset domains only | `ALLOWED_DOMAINS_RULESET=true` |
+| Restrict to ruleset domains plus extras | `ALLOWED_DOMAINS=internal.corp.com` and `ALLOWED_DOMAINS_RULESET=true` |
+
+For the full list of environment variables, see [Environment variables](/configuration/environment-variables). For domain configuration within ruleset files, see [Ruleset configuration](/configuration/ruleset).

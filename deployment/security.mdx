@@ -1,0 +1,139 @@
+---
+title: "Secure a public Ladder instance: auth and access control"
+description: "Enable Basic Auth with USERPASS, restrict domains with ALLOWED_DOMAINS, and control ruleset visibility before exposing Ladder to the public internet."
+---
+
+Ladder is an HTTP proxy. When deployed without any access controls, it allows anyone who can reach it to fetch any URL on the internet — and requests will appear to originate from your server's IP address. Before making a Ladder instance publicly accessible, you should understand and apply the security controls described on this page.
+
+<Warning>
+  Without Basic Auth enabled, anyone can use your proxy to browse any content — including illegal material. You will be held responsible for traffic that originates from your server. Always enable Basic Auth on any instance that is accessible from the public internet.
+</Warning>
+
+## Basic Auth
+
+Ladder uses HTTP Basic Auth backed by the `USERPASS` environment variable. When `USERPASS` is set, every request to the proxy requires valid credentials.
+
+The format is `username:password`:
+
+<Tabs>
+  <Tab title="Docker">
+
+```bash
+docker run -p 8080:8080 -d \
+  --name ladder \
+  -e RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml \
+  -e USERPASS=admin:secretpassword \
+  ghcr.io/everywall/ladder:latest
+```
+
+  </Tab>
+  <Tab title="Docker Compose">
+
+Add `USERPASS` to the `environment` block of the `ladder` service in `docker-compose.yaml`:
+
+```yaml
+services:
+  ladder:
+    image: ghcr.io/everywall/ladder:latest
+    environment:
+      - USERPASS=admin:secretpassword
+      - RULESET=/app/ruleset.yaml
+      - LOG_URLS=true
+    ports:
+      - "8080:8080"
+```
+
+  </Tab>
+  <Tab title="Binary">
+
+Set the environment variable before running the binary:
+
+```bash
+USERPASS=admin:secretpassword ./ladder -r ./ruleset.yaml
+```
+
+  </Tab>
+</Tabs>
+
+When credentials are configured, unauthenticated requests receive a `401 Unauthorized` response and a browser prompt for credentials.
+
+<Note>
+  The `USERPASS` variable currently supports a single username and password pair. If you need multiple users or more advanced authentication, run Ladder behind a reverse proxy (see [Best practices](#best-practices)).
+</Note>
+
+## Restricting proxied domains
+
+The `ALLOWED_DOMAINS` variable limits which domains Ladder will proxy. Requests to any domain not in the list are rejected.
+
+```bash
+ALLOWED_DOMAINS=example.com,example.org
+```
+
+You can also automatically allow all domains that appear in your active ruleset:
+
+```bash
+ALLOWED_DOMAINS_RULESET=true
+```
+
+`ALLOWED_DOMAINS` and `ALLOWED_DOMAINS_RULESET` are additive — both lists are combined. If both are empty, no domain restrictions are applied.
+
+See [Domain restrictions](/configuration/domain-restrictions) for a full explanation of how the allowlist is evaluated.
+
+## Controlling ruleset visibility
+
+By default, the active ruleset is publicly visible at `/ruleset`. This can be useful for sharing your configuration with other Ladder instances, but you may want to disable it on a public-facing proxy to avoid exposing internal configuration.
+
+Set `EXPOSE_RULESET=false` to prevent the endpoint from responding:
+
+```bash
+EXPOSE_RULESET=false
+```
+
+## Access logging
+
+Two environment variables control what Ladder logs.
+
+| Variable | Default | Behaviour |
+|---|---|---|
+| `LOG_URLS` | `true` | Logs each proxied URL (and relative URL rewrites) to stdout |
+| `NOLOGS` | _(unset)_ | When set to `true`, disables all request logging entirely |
+
+Keeping `LOG_URLS=true` makes it possible to audit which URLs your instance is serving. Set `NOLOGS=true` only if you have a strong privacy reason to do so, and understand you will lose the ability to review access history.
+
+## Best practices
+
+<Steps>
+  <Step title="Enable Basic Auth on every public instance">
+    Set `USERPASS` to a strong, unique password. This is the single most important step. Without it, your instance is an open proxy.
+  </Step>
+
+  <Step title="Use domain allowlists">
+    Set `ALLOWED_DOMAINS` to a comma-separated list of domains you actually want to proxy. This prevents your instance from being used to reach arbitrary hosts.
+  </Step>
+
+  <Step title="Monitor access logs">
+    Keep `LOG_URLS=true` (the default) and forward logs to a log aggregation system. Review them periodically to detect unexpected usage patterns.
+  </Step>
+
+  <Step title="Run behind a reverse proxy for HTTPS">
+    Ladder does not handle TLS termination. Put Ladder behind a reverse proxy such as [nginx](https://nginx.org/), [Caddy](https://caddyserver.com/), or [Traefik](https://traefik.io/) to serve traffic over HTTPS and manage TLS certificates automatically.
+
+    Example Caddy configuration:
+
+    ```
+    ladder.yourdomain.com {
+        reverse_proxy localhost:8080
+    }
+    ```
+  </Step>
+
+  <Step title="Keep Ladder updated">
+    Follow the [GitHub releases page](https://github.com/everywall/ladder/releases) and update to new versions regularly to receive security fixes. When using Docker, pull the latest image and recreate your container:
+
+    ```bash
+    docker pull ghcr.io/everywall/ladder:latest
+    docker stop ladder && docker rm ladder
+    # Re-run your docker run command
+    ```
+  </Step>
+</Steps>

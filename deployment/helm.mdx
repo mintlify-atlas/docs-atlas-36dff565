@@ -1,0 +1,159 @@
+---
+title: "Deploy Ladder on Kubernetes using the Helm chart"
+description: "Install Ladder on a Kubernetes cluster with the official Helm chart. Covers prerequisites, chart values, ingress configuration, upgrades, and uninstalling."
+---
+
+Ladder ships with a Helm chart that deploys the proxy as a Kubernetes workload with configurable ingress, environment variables, and image settings. The chart is version `1.0` and targets Ladder app version `v0.0.11`.
+
+<Note>
+  The Helm chart is located in the `helm-chart/` directory of the Ladder repository. For the full reference of all template files and annotations, see the [helm-chart/README.md](https://github.com/everywall/ladder/blob/main/helm-chart/README.md).
+</Note>
+
+## Prerequisites
+
+- A running Kubernetes cluster
+- `kubectl` configured to point at that cluster
+- Helm 3 installed
+
+## Installation
+
+<Steps>
+  <Step title="Clone the repository or download the chart">
+    ```bash
+    git clone https://github.com/everywall/ladder.git
+    cd ladder
+    ```
+  </Step>
+
+  <Step title="Edit values.yaml">
+    Open `helm-chart/values.yaml` and at minimum update the ingress hostname:
+
+    ```yaml
+    ingress:
+      HOST: "ladder.yourdomain.com"
+    ```
+
+    See [Key values](#key-values) below for all configurable options.
+  </Step>
+
+  <Step title="Install the chart">
+    ```bash
+    helm install ladder ./helm-chart -n ladder --create-namespace
+    ```
+
+    This creates a `ladder` namespace and deploys Ladder into it.
+  </Step>
+
+  <Step title="Verify the deployment">
+    ```bash
+    kubectl get pods -n ladder
+    kubectl get svc -n ladder
+    ```
+  </Step>
+</Steps>
+
+## Key values
+
+All configurable values from `helm-chart/values.yaml`:
+
+```yaml
+image:
+  RELEASE: ghcr.io/everywall/ladder:latest
+
+env:
+  PORT: 8080
+  PREFORK: "false"
+  USER_AGENT: "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
+  X_FORWARDED_FOR:
+  USERPASS: ""
+  LOG_URLS: "true"
+  DISABLE_FORM: "false"
+  FORM_PATH: ""
+  RULESET: "https://raw.githubusercontent.com/everywall/ladder/main/ruleset.yaml"
+  EXPOSE_RULESET: "true"
+  ALLOWED_DOMAINS: ""
+  ALLOWED_DOMAINS_RULESET: "false"
+
+ingress:
+  HOST: "ladder.domain.com"
+  PORT: 80
+```
+
+| Value | Description | Default |
+|-------|-------------|---------|
+| `image.RELEASE` | Full image reference including tag | `ghcr.io/everywall/ladder:latest` |
+| `env.PORT` | Port the server listens on inside the container | `8080` |
+| `env.PREFORK` | Spawn multiple process instances | `"false"` |
+| `env.USER_AGENT` | User-Agent header sent with proxied requests | Googlebot string |
+| `env.X_FORWARDED_FOR` | IP address sent in the X-Forwarded-For header | _(empty)_ |
+| `env.USERPASS` | Enables Basic Auth in `username:password` format | `""` |
+| `env.LOG_URLS` | Log each proxied URL to stdout | `"true"` |
+| `env.DISABLE_FORM` | Disable the URL entry form on the home page | `"false"` |
+| `env.FORM_PATH` | Path to a custom form HTML file inside the container | `""` |
+| `env.RULESET` | URL or path to the ruleset YAML | Community ruleset URL |
+| `env.EXPOSE_RULESET` | Serve the active ruleset at `/ruleset` | `"true"` |
+| `env.ALLOWED_DOMAINS` | Comma-separated list of allowed proxy domains | `""` (no limit) |
+| `env.ALLOWED_DOMAINS_RULESET` | Also allow domains defined in the ruleset | `"false"` |
+| `ingress.HOST` | Hostname for the Kubernetes Ingress resource | `ladder.domain.com` |
+| `ingress.PORT` | Port exposed by the Ingress | `80` |
+
+## Custom values example
+
+To enable Basic Auth and restrict to specific domains, create a `my-values.yaml` override file:
+
+```yaml
+env:
+  USERPASS: "admin:secretpassword"
+  ALLOWED_DOMAINS: "example.com,example.org"
+  RULESET: "https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml"
+
+ingress:
+  HOST: "ladder.yourdomain.com"
+```
+
+Then install with:
+
+```bash
+helm install ladder ./helm-chart -n ladder --create-namespace -f my-values.yaml
+```
+
+## Configuring the ingress class
+
+No ingress class is set by default. To use a specific ingress controller, add an annotation to `helm-chart/templates/ingress.yaml`. For example, to use Traefik:
+
+```yaml
+metadata:
+  name: ladder-ingress
+  annotations:
+    kubernetes.io/ingress.class: traefik
+```
+
+Other common ingress controllers include `nginx` and `haproxy`.
+
+## Upgrading
+
+After changing values, apply the update with `helm upgrade`:
+
+```bash
+helm upgrade ladder ./helm-chart -n ladder
+```
+
+Or with a custom values file:
+
+```bash
+helm upgrade ladder ./helm-chart -n ladder -f my-values.yaml
+```
+
+## Uninstalling
+
+To remove the Ladder deployment and all associated Kubernetes resources:
+
+```bash
+helm uninstall ladder -n ladder
+```
+
+This does not delete the `ladder` namespace itself. To remove the namespace as well:
+
+```bash
+kubectl delete namespace ladder
+```

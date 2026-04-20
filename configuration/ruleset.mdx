@@ -1,0 +1,287 @@
+---
+title: "Configure per-domain proxy rules with Ladder rulesets"
+description: "Define per-domain rules in YAML to modify headers, rewrite URLs, inject HTML, and apply regex transforms. Load from files, directories, or remote URLs."
+---
+
+A ruleset is a YAML file containing an array of rules. Each rule targets one or more domains and describes how Ladder should modify the request before fetching the upstream site, and how to transform the response before returning it to the client. Rules are matched by hostname and applied in order; the first match wins.
+
+Ladder loads rulesets at startup from the `RULESET` environment variable. The value can be a local file path, a directory of YAML files, a remote URL, or a semicolon-separated combination. See [Loading rulesets](#loading-rulesets) below.
+
+## Rule structure
+
+Each entry in the YAML array maps to a `Rule` with the following top-level fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `domain` | string | Primary domain this rule applies to. Matches the domain and all subdomains. |
+| `domains` | string[] | Additional domains to match with the same rule. |
+| `paths` | string[] | Restrict matching to specific URL paths. If omitted, the rule applies to all paths on the domain. |
+| `headers` | object | Override request and response headers. |
+| `googleCache` | boolean | Fetch the page through Google Cache instead of directly. |
+| `useFlareSolverr` | boolean | Use the configured FlareSolverr instance to solve Cloudflare challenges before fetching. |
+| `regexRules` | object[] | Regex find-and-replace rules applied to the response body. |
+| `urlMods` | object | Modify the upstream URL before fetching: hostname, path, and query parameters. |
+| `injections` | object[] | Inject arbitrary HTML into DOM positions in the response. |
+
+## Field details
+
+<AccordionGroup>
+  <Accordion title="domain and domains">
+    `domain` sets the primary hostname this rule targets. The match is suffix-based: a rule for `example.com` also matches `www.example.com`, `news.example.com`, and any other subdomain.
+
+    `domains` accepts a list of additional hostnames to match with the same rule, using the same suffix logic.
+
+    ```yaml
+    - domain: example.com          # matches example.com and all subdomains
+      domains:
+        - www.example.de           # also matches www.example.de and subdomains
+        - www.beispiel.de
+    ```
+  </Accordion>
+
+  <Accordion title="paths">
+    When `paths` is set, the rule only applies when the request URL path exactly matches one of the listed values. If `paths` is omitted or empty, the rule applies to every path on the matched domain.
+
+    ```yaml
+    - domain: www.anotherdomain.com
+      paths:
+        - /article
+        - /news
+    ```
+  </Accordion>
+
+  <Accordion title="headers">
+    The `headers` block controls request headers Ladder sends to the upstream site, and one response header it rewrites.
+
+    | Key | Scope | Behavior |
+    |---|---|---|
+    | `user-agent` | Request | Overrides the global `USER_AGENT` env var for this domain. |
+    | `x-forwarded-for` | Request | Overrides the global `X_FORWARDED_FOR` env var. Set to `none` to omit the header entirely. |
+    | `referer` | Request | Sets the `Referer` header. Set to `none` to omit it. |
+    | `cookie` | Request | Sets the `Cookie` header. Merged with FlareSolverr cookies when `useFlareSolverr` is enabled. |
+    | `content-security-policy` | Response | Replaces the `Content-Security-Policy` header in the upstream response. |
+
+    ```yaml
+    headers:
+      user-agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+      x-forwarded-for: none        # delete the header
+      referer: none                # delete the header
+      cookie: privacy=1
+      content-security-policy: "script-src 'self';"
+    ```
+  </Accordion>
+
+  <Accordion title="googleCache">
+    When `googleCache: true`, Ladder rewrites the upstream URL to `https://webcache.googleusercontent.com/search?q=cache:<original-url>` before fetching. Useful for accessing cached versions of paywalled pages.
+
+    ```yaml
+    - domain: example.com
+      googleCache: true
+    ```
+
+    <Note>
+      Google Cache availability depends on whether Google has indexed the page. It is not guaranteed to exist for every URL.
+    </Note>
+  </Accordion>
+
+  <Accordion title="useFlareSolverr">
+    When `useFlareSolverr: true`, Ladder calls the configured FlareSolverr service to obtain session cookies before making the upstream request. This lets Ladder access sites protected by Cloudflare's bot challenges.
+
+    Requires the `FLARESOLVERR_HOST` environment variable to be set. See [FlareSolverr integration](/advanced/flaresolverr).
+
+    ```yaml
+    - domain: cloudflare-protected-site.com
+      useFlareSolverr: true
+    ```
+
+    <Warning>
+      Only enable `useFlareSolverr` for domains that actually need it. Each request requires a headless browser session in FlareSolverr, which adds significant latency and resource usage.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="regexRules">
+    `regexRules` is a list of find-and-replace operations applied to the raw response body (as a string) after the page is fetched. Each entry has:
+
+    - `match` — a Go-compatible regular expression.
+    - `replace` — the replacement string. Supports capture group references (`$1`, `$2`, etc.).
+
+    Rules are applied in order.
+
+    ```yaml
+    regexRules:
+      - match: '<script\s+([^>]*\s+)?src="(/)([^"]*)"'
+        replace: '<script $1 script="/https://www.example.com/$3"'
+    ```
+  </Accordion>
+
+  <Accordion title="urlMods">
+    `urlMods` rewrites the upstream URL before Ladder fetches it. Three sub-keys control different parts of the URL:
+
+    **`domain`** — list of regex match/replace pairs applied to the hostname:
+
+    ```yaml
+    urlMods:
+      domain:
+        - match: www
+          replace: amp   # changes www.demo.com → amp.demo.com
+    ```
+
+    **`path`** — list of regex match/replace pairs applied to the URL path:
+
+    ```yaml
+    urlMods:
+      path:
+        - match: ^
+          replace: /amp/  # prepends /amp/ to every path
+    ```
+
+    **`query`** — list of key/value pairs. If `value` is non-empty, the query parameter is set or added. If `value` is empty, the parameter is deleted:
+
+    ```yaml
+    urlMods:
+      query:
+        - key: amp
+          value: "1"      # appends ?amp=1
+        - key: tracking
+          value: ""       # removes ?tracking=... if present
+    ```
+  </Accordion>
+
+  <Accordion title="injections">
+    `injections` inserts HTML into the response page using CSS selectors (powered by [goquery](https://github.com/PuerkitoBio/goquery)). Use the special selector `head` to target the `<head>` element.
+
+    Each injection entry specifies:
+    - `position` — a CSS selector or `head`.
+    - One of `append`, `prepend`, or `replace` — the HTML to insert.
+
+    | Key | Behavior |
+    |---|---|
+    | `append` | Inserts HTML after the last child of the matched element. |
+    | `prepend` | Inserts HTML before the first child of the matched element. |
+    | `replace` | Replaces the matched element's inner HTML entirely. |
+
+    ```yaml
+    injections:
+      - position: head
+        append: |
+          <script>
+            window.localStorage.clear();
+          </script>
+      - position: .left-content article .post-title
+        replace: |
+          <h1>My Custom Title</h1>
+      - position: .left-content article
+        prepend: |
+          <h2>Subtitle</h2>
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Complete example
+
+The following ruleset demonstrates all major features across three domain rules:
+
+```yaml
+- domain: example.com           # matches example.com and all subdomains
+  domains:
+    - www.beispiel.de           # additional domains sharing this rule
+  googleCache: true
+  useFlareSolverr: false
+  headers:
+    x-forwarded-for: none       # omit the X-Forwarded-For header
+    referer: none               # omit the Referer header
+    user-agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    cookie: privacy=1
+  regexRules:
+    - match: '<script\s+([^>]*\s+)?src="(/)([^"]*)"'
+      replace: '<script $1 script="/https://www.example.com/$3"'
+  injections:
+    - position: head
+      append: |
+        <script>
+          window.localStorage.clear();
+          console.log("test");
+          alert("Hello!");
+        </script>
+    - position: h1
+      replace: |
+        <h1>An example with a ladder ;-)</h1>
+
+- domain: www.anotherdomain.com
+  useFlareSolverr: false
+  paths:                        # only apply on /article paths
+    - /article
+  googleCache: false
+  regexRules:
+    - match: '<script\s+([^>]*\s+)?src="(/)([^"]*)"'
+      replace: '<script $1 script="/https://www.example.com/$3"'
+  injections:
+    - position: .left-content article .post-title
+      replace: |
+        <h1>My Custom Title</h1>
+    - position: .left-content article
+      prepend: |
+        <h2>Subtitle</h2>
+
+- domain: demo.com
+  headers:
+    content-security-policy: "script-src 'self';"
+    user-agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+  urlMods:
+    query:
+      - key: amp
+        value: "1"              # appends ?amp=1 to every URL
+    domain:
+      - match: www
+        replace: amp            # rewrites www.demo.com → amp.demo.com
+    path:
+      - match: ^
+        replace: /amp/          # prepends /amp/ to every path
+```
+
+## Loading rulesets
+
+Set the `RULESET` environment variable to tell Ladder where to find rules. It accepts:
+
+- **A file path**: `/etc/ladder/rules.yaml`
+- **A directory**: `/etc/ladder/rules/` — Ladder walks the directory and loads all `.yaml` and `.yml` files.
+- **A remote URL**: `https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml`
+- **A semicolon-separated list** mixing any of the above: `/etc/ladder/local.yaml;https://example.com/remote.yaml`
+
+```bash
+# Single file
+RULESET=/etc/ladder/rules.yaml ./ladder
+
+# Directory
+RULESET=/etc/ladder/rules/ ./ladder
+
+# Remote URL
+RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml ./ladder
+
+# Combined local and remote
+RULESET=/etc/ladder/local.yaml;https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml ./ladder
+```
+
+When multiple sources are listed, rules from all sources are merged into a single ruleset in the order they are loaded.
+
+<Note>
+  If a local file or directory path is specified but not found on disk, Ladder panics at startup. Remote URL failures are logged as warnings but do not stop the server.
+</Note>
+
+## Community ruleset
+
+A community-maintained ruleset covering many popular sites is available at:
+
+```
+https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml
+```
+
+Use it directly or as a starting point alongside your own rules:
+
+```bash
+RULESET="https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml;/etc/ladder/my-rules.yaml" ./ladder
+```
+
+<Tip>
+  Set `EXPOSE_RULESET=true` (the default) to publish your merged ruleset at `/ruleset`. Other Ladder instances can then point their `RULESET` variable at your instance's URL.
+</Tip>

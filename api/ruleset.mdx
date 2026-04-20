@@ -1,0 +1,74 @@
+---
+title: "GET /ruleset — inspect or share the active ruleset"
+description: "Returns the currently loaded Ladder ruleset as YAML. Use it to inspect active rules, debug loading issues, or share your config with other Ladder instances."
+---
+
+The `/ruleset` endpoint returns the ruleset currently loaded by your Ladder instance, serialized as YAML. You can use this to inspect which rules are active, debug rule loading issues, or share your ruleset with other Ladder instances that can load it as a remote URL.
+
+## GET /ruleset
+
+No parameters required.
+
+### Example
+
+```bash
+curl http://localhost:8080/ruleset
+```
+
+### Example response
+
+```yaml
+- domain: example.com
+  domains:
+    - www.beispiel.de
+  googleCache: true
+  useFlareSolverr: false
+  headers:
+    x-forwarded-for: none
+    referer: none
+    user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ...
+    cookie: privacy=1
+  regexRules:
+    - match: <script\s+([^>]*\s+)?src="(/)([^"]*)"
+      replace: <script $1 script="/https://www.example.com/$3"
+  injections:
+    - position: head
+      append: |
+        <script>
+          window.localStorage.clear();
+        </script>
+```
+
+## Controlling access
+
+The `EXPOSE_RULESET` environment variable controls whether this endpoint is accessible:
+
+| Value | Behavior |
+|-------|----------|
+| `true` (default) | Returns the full ruleset as YAML |
+| `false` | Returns HTTP `403 Forbidden` with the body `Rules Disabled` |
+
+```bash
+# Disable ruleset exposure
+docker run -e EXPOSE_RULESET=false -p 8080:8080 ghcr.io/everywall/ladder:latest
+```
+
+## Using the endpoint as a remote ruleset source
+
+Because the endpoint returns standard YAML, another Ladder instance can load your ruleset directly via URL:
+
+```bash
+# Instance B loads its ruleset from Instance A
+docker run \
+  -e RULESET=http://instance-a:8080/ruleset \
+  -p 8080:8080 \
+  ghcr.io/everywall/ladder:latest
+```
+
+<Tip>
+This makes it easy to maintain a single authoritative ruleset on one instance and have other instances load it automatically on startup — no file distribution needed.
+</Tip>
+
+<Note>
+The ruleset is loaded once at startup. Changes to the source ruleset file or URL are not picked up at runtime — restart Ladder to reload.
+</Note>

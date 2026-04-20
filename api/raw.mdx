@@ -1,0 +1,48 @@
+---
+title: "GET /raw/{url} — fetch raw HTML without rewriting"
+description: "Retrieve the unmodified HTML source of any URL through Ladder. Ruleset header and injection rules still apply, but relative URLs are not rewritten."
+---
+
+The `/raw` endpoint fetches a target URL through Ladder and returns the HTML as a plain-text string — without the URL rewriting that the browser proxy mode (`/{url}`) applies. This is useful when you want the original HTML source to inspect, parse, or process programmatically without Ladder's link-rewriting transformations.
+
+## GET /raw/\{url\}
+
+### Parameters
+
+<ParamField path="url" type="string" required>
+  The full URL to fetch, including the scheme. For example: `https://www.example.com/article`.
+</ParamField>
+
+Query parameters are forwarded to the target site.
+
+### Example
+
+```bash
+curl "http://localhost:8080/raw/https://www.example.com"
+```
+
+## Response
+
+Returns the page body as `text/plain`. No JSON wrapper — just the raw HTML string.
+
+## How it differs from other endpoints
+
+| Endpoint | Response format | Ruleset applied |
+|----------|----------------|-----------------|
+| `/{url}` | HTML — served directly for in-browser navigation | Yes |
+| `/api/{url}` | JSON — body string plus request/response header arrays | Yes |
+| `/raw/{url}` | Plain text — HTML body string, no JSON wrapper | Yes |
+
+<Note>
+All three endpoints use the same internal fetch pipeline, so ruleset rules (custom headers, regex replacements, HTML injections) and URL rewriting all apply equally in raw mode. The difference is purely in how the result is returned: `/raw` sends the HTML body as plain text, while `/api` wraps it in a JSON response with header metadata.
+</Note>
+
+## Error responses
+
+On failure, Ladder returns HTTP `500` with a plain-text error message.
+
+## With Basic Auth
+
+```bash
+curl -u admin:password "http://localhost:8080/raw/https://www.example.com"
+```

@@ -1,97 +1,84 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Ladder: Self-Hosted HTTP Proxy for Web Testing"
+description: "Ladder is a self-hosted HTTP proxy for developers. Remove CORS headers, rewrite HTML, and simulate crawler environments to test content delivery behavior."
 ---
 
-## Setting up
+Ladder is a self-hosted HTTP proxy built for developers, researchers, and QA engineers who need to test and analyze how websites serve content under different conditions. It lets you simulate different client environments — such as Googlebot or custom browsers — and observe how paywalls, CORS policies, and content delivery behave.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Run Ladder locally in under five minutes and proxy your first URL.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Installation" icon="download" href="/installation">
+    Install via Docker, Helm, or pre-built binary for your platform.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Configuration" icon="sliders" href="/configuration/environment-variables">
+    Configure ports, authentication, user agents, and rulesets.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API Reference" icon="code" href="/api/overview">
+    Use Ladder programmatically via its REST API endpoints.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## How Ladder works
 
-Everything you need to create world-class documentation.
+When you send a request through Ladder, it applies your configured request modifications (headers, user agent, cookies), fetches the target site, then applies response modifications (HTML rewriting, regex rules, code injection) before returning the result to your browser or API client.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+```
+client → Ladder (apply RequestModifications) → website → Ladder (apply ResultModifications) → client
+```
 
-## Need inspiration?
+## Key features
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={2}>
+  <Card title="CORS header removal" icon="shield-halved">
+    Strip or override CORS, Content-Security-Policy, and other restrictive response headers.
+  </Card>
+  <Card title="Domain rulesets" icon="list-check">
+    Define per-domain rules for header overrides, HTML injection, regex rewrites, and URL modifications.
+  </Card>
+  <Card title="Crawler emulation" icon="robot">
+    Send requests with Googlebot user agent and forged X-Forwarded-For to simulate crawler access.
+  </Card>
+  <Card title="FlareSolverr integration" icon="cloud">
+    Bypass Cloudflare challenges on specific domains using an optional FlareSolverr sidecar.
+  </Card>
+  <Card title="REST API" icon="plug">
+    Fetch pages and inspect request/response headers programmatically via the JSON API.
+  </Card>
+  <Card title="Basic Auth protection" icon="lock">
+    Secure your public instance with Basic Auth to prevent unauthorized use.
+  </Card>
+</CardGroup>
+
+## Get started
+
+<Steps>
+  <Step title="Run with Docker">
+    Pull and run the official container image with a public ruleset:
+
+    ```bash
+    docker run -p 8080:8080 -d \
+      --env RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml \
+      --name ladder \
+      ghcr.io/everywall/ladder:latest
+    ```
+  </Step>
+  <Step title="Open the proxy UI">
+    Navigate to [http://localhost:8080](http://localhost:8080) in your browser. You'll see a URL input form where you can enter any URL to proxy it through Ladder.
+  </Step>
+  <Step title="Proxy a URL directly">
+    Append any URL to the proxy address to fetch it immediately:
+
+    ```
+    http://localhost:8080/https://www.example.com
+    ```
+  </Step>
+  <Step title="Configure your ruleset">
+    Create a `ruleset.yaml` file to define per-domain rules for header manipulation, HTML injection, and more. See [Ruleset configuration](/configuration/ruleset) for the full schema.
+  </Step>
+</Steps>
+
+<Warning>
+  If your Ladder instance will be publicly accessible, enable Basic Auth by setting the `USERPASS` environment variable. Without it, anyone with access to your instance can proxy arbitrary content through your server.
+</Warning>

@@ -1,0 +1,112 @@
+---
+title: "GET /api/{url} — proxy a site and return JSON"
+description: "Fetch any URL through Ladder and receive the HTML body plus request and response headers as a JSON object. Supports GET /api/{url} and POST /api."
+---
+
+The `/api` endpoints fetch a target URL through Ladder's proxy and return a JSON response containing the page body and the headers that were sent and received. This is useful for programmatic access — inspecting headers, extracting content, or integrating Ladder into a pipeline.
+
+## GET /api/\{url\}
+
+Fetch the target URL and return a JSON response.
+
+### Parameters
+
+<ParamField path="url" type="string" required>
+  The full URL to proxy, including the scheme. For example: `https://www.example.com/article`.
+</ParamField>
+
+Query parameters appended to the request are forwarded to the target site.
+
+### Example
+
+```bash
+curl -X GET "http://localhost:8080/api/https://www.example.com"
+```
+
+---
+
+## POST /api
+
+Fetch a URL supplied in a JSON request body.
+
+### Request body
+
+<ParamField body="url" type="string" required>
+  The full URL to fetch. Must include the scheme (e.g. `https://`).
+</ParamField>
+
+The `Content-Type` header must be set to `application/json`.
+
+### Example
+
+```bash
+curl -X POST "http://localhost:8080/api" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://www.example.com"}'
+```
+
+---
+
+## Response
+
+Both endpoints return the same JSON structure:
+
+<ResponseField name="version" type="string">
+  The Ladder version string (e.g. `"v0.0.11"`).
+</ResponseField>
+
+<ResponseField name="body" type="string">
+  The HTML body of the proxied page, after ruleset modifications have been applied.
+</ResponseField>
+
+<ResponseField name="request" type="object">
+  Details about the outgoing request Ladder made to the target site.
+  <Expandable title="properties">
+    <ResponseField name="headers" type="array">
+      List of headers sent to the target. Each item is an object with `key` and `value` string fields.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="response" type="object">
+  Details about the response received from the target site.
+  <Expandable title="properties">
+    <ResponseField name="headers" type="array">
+      List of headers received from the target. Each item is an object with `key` and `value` string fields.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "version": "v0.0.11",
+  "body": "<!DOCTYPE html><html>...</html>",
+  "request": {
+    "headers": [
+      { "key": "User-Agent", "value": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" },
+      { "key": "X-Forwarded-For", "value": "66.249.66.1" },
+      { "key": "Referer", "value": "https://www.example.com" }
+    ]
+  },
+  "response": {
+    "headers": [
+      { "key": "Content-Type", "value": "text/html; charset=utf-8" },
+      { "key": "Cache-Control", "value": "no-cache" }
+    ]
+  }
+}
+```
+
+## Error responses
+
+On failure, Ladder returns HTTP `500` with a plain-text error string describing what went wrong (e.g. network timeout, domain not in allowlist).
+
+## With Basic Auth
+
+If your instance has `USERPASS` configured:
+
+```bash
+curl -u admin:password "http://localhost:8080/api/https://www.example.com"
+```

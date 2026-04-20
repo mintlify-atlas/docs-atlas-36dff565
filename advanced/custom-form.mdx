@@ -1,0 +1,127 @@
+---
+title: "Customize or disable the Ladder proxy web UI form"
+description: "Replace Ladder's built-in URL entry form with your own HTML file using FORM_PATH, or disable the web UI entirely with DISABLE_FORM for API-only deployments."
+---
+
+Ladder serves a built-in HTML form at its root (`/`) that lets you type or paste a URL and navigate to the proxied page. You can replace this form with your own HTML file, or disable it entirely when you only need the proxy and API endpoints.
+
+## Default form behavior
+
+When neither `DISABLE_FORM` nor `FORM_PATH` is set, Ladder embeds and serves `handlers/form.html` from the repository. The form is accessible at `http://localhost:8080` (or whatever host and port Ladder is configured to use).
+
+The default form submits via JavaScript: on submission it prepends `/` to the entered URL and navigates the browser to `/{url}`, which is the standard Ladder proxy path. You can reach any URL directly without the form by navigating to `http://localhost:8080/{url}` or using a `GET` request to that path.
+
+## Environment variables
+
+| Variable | Description | Default |
+|---|---|---|
+| `DISABLE_FORM` | Set to `true` to disable the form. Ladder returns `404 Form Disabled` for `GET /`. | `false` |
+| `FORM_PATH` | Absolute path to a custom HTML file that replaces the default form. | _(unset)_ |
+
+These variables are mutually exclusive in practice: if `DISABLE_FORM=true`, the form is never served regardless of `FORM_PATH`.
+
+## Disabling the form
+
+Set `DISABLE_FORM=true` to turn off the web UI entirely. This is useful when Ladder is deployed as a pure proxy or API backend and you do not want a browseable entry point.
+
+```bash
+DISABLE_FORM=true ./ladder
+```
+
+With Docker:
+
+```bash
+docker run -p 8080:8080 \
+  -e DISABLE_FORM=true \
+  -e RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml \
+  ghcr.io/everywall/ladder:latest
+```
+
+`GET /` returns `HTTP 404` with the body `Form Disabled` when this flag is active. All proxy, API, raw, and ruleset endpoints continue to work normally.
+
+## Using a custom form
+
+Set `FORM_PATH` to the path of an HTML file on disk. Ladder reads this file at request time and serves it instead of the built-in form. If the file cannot be read, Ladder logs an error and falls back to the embedded default form.
+
+```bash
+FORM_PATH=/etc/ladder/my-form.html ./ladder
+```
+
+<Note>
+  Your custom form must submit the URL to Ladder using the supported pattern: navigate to `/{url}` — for example, `/https://www.example.com`. This is what the default form does via JavaScript on submit.
+
+  To use the JSON API instead, your form can POST to `/api` with `Content-Type: application/json` and a `{"url": "..."}` body. The browser proxy path (`/{url}`) only accepts GET.
+</Note>
+
+### Mounting a custom form in Docker
+
+Mount your HTML file into the container and pass its container path via `FORM_PATH`:
+
+```bash
+docker run -p 8080:8080 \
+  -v /path/to/my-form.html:/app/form.html \
+  -e FORM_PATH=/app/form.html \
+  -e RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml \
+  ghcr.io/everywall/ladder:latest
+```
+
+### Docker Compose volume mount
+
+The default `docker-compose.yaml` already mounts the repository form file and sets `FORM_PATH` as a commented-out example:
+
+```yaml
+services:
+  ladder:
+    image: ghcr.io/everywall/ladder:latest
+    environment:
+      - PORT=8080
+      - RULESET=/app/ruleset.yaml
+      # Uncomment to use a custom form:
+      # - FORM_PATH=/app/form.html
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./ruleset.yaml:/app/ruleset.yaml
+      # Mount your custom form:
+      - ./handlers/form.html:/app/form.html
+```
+
+Uncomment both the volume mount line and the `FORM_PATH` environment variable, then replace `./handlers/form.html` with the path to your own file.
+
+## Default form reference
+
+The default form is located at `handlers/form.html` in the repository. It uses a `GET` method form element whose JavaScript intercepts the submit event, prefixes the URL with `/`, and navigates the browser. You can use it as a starting point for your own form:
+
+```html
+<form id="inputForm" method="get">
+  <input type="url" id="inputField" name="inputField" required autofocus>
+</form>
+
+<script>
+  document.getElementById('inputForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    let url = document.getElementById('inputField').value;
+    if (url.indexOf('http') === -1) {
+      url = 'https://' + url;
+    }
+    window.location.href = '/' + url;
+    return false;
+  });
+</script>
+```
+
+The production form also includes Tailwind CSS classes. If you modify styles in the default `form.html`, run `pnpm build` to regenerate the stylesheet.
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Environment variables" icon="sliders" href="/configuration/environment-variables">
+    Full reference for all Ladder environment variables.
+  </Card>
+  <Card title="API reference" icon="code" href="/api/overview">
+    Use the proxy, raw, and API endpoints without the form.
+  </Card>
+  <Card title="Docker deployment" icon="docker" href="/deployment/docker">
+    Volume mounts and environment variable configuration for Docker.
+  </Card>
+</CardGroup>

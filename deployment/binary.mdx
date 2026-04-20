@@ -1,0 +1,162 @@
+---
+title: "Download and run Ladder as a standalone binary"
+description: "Install Ladder on Linux, macOS, or Windows without Docker. Covers release download, all CLI flags, live-reload development setup, and building from source."
+---
+
+Ladder is distributed as a self-contained binary with no runtime dependencies. You can download a prebuilt release from GitHub or compile it from source using the Go toolchain.
+
+## Download a prebuilt release
+
+Prebuilt binaries are published for every release at [https://github.com/everywall/ladder/releases/latest](https://github.com/everywall/ladder/releases/latest).
+
+<Tabs>
+  <Tab title="Linux">
+
+```bash
+# Download the archive (replace ARCH with amd64 or arm64)
+curl -L https://github.com/everywall/ladder/releases/latest/download/ladder_linux_amd64.tar.gz \
+  -o ladder_linux_amd64.tar.gz
+
+# Extract
+tar -xzf ladder_linux_amd64.tar.gz
+
+# Run
+./ladder -r https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml
+```
+
+  </Tab>
+  <Tab title="macOS">
+
+```bash
+# Download the archive (replace ARCH with amd64 or arm64)
+curl -L https://github.com/everywall/ladder/releases/latest/download/ladder_darwin_amd64.tar.gz \
+  -o ladder_darwin_amd64.tar.gz
+
+# Extract
+tar -xzf ladder_darwin_amd64.tar.gz
+
+# Run
+./ladder -r https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml
+```
+
+  </Tab>
+  <Tab title="Windows">
+
+Download the `.zip` archive for your architecture from the [releases page](https://github.com/everywall/ladder/releases/latest):
+
+- `ladder_windows_amd64.zip`
+
+Extract the archive and run `ladder.exe` from a terminal:
+
+```powershell
+.\ladder.exe -r https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml
+```
+
+<Note>
+  Windows support is untested. If you encounter issues, consider running Ladder via Docker instead.
+</Note>
+
+  </Tab>
+</Tabs>
+
+After starting, open [http://localhost:8080](http://localhost:8080) in your browser.
+
+## Supported platforms
+
+| OS | Architectures |
+|----|---------------|
+| Linux | amd64, arm64 |
+| macOS (darwin) | amd64, arm64 |
+| Windows | amd64 |
+
+## CLI flags
+
+All flags can be combined. Flags override their corresponding environment variable equivalents.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--port` | `-p` | Port the web server listens on. Defaults to `PORT` env var, then `8080`. |
+| `--prefork` | `-P` | Spawn multiple server processes for higher throughput. |
+| `--ruleset` | `-r` | Path, directory, or URL to a `ruleset.yaml`. Overrides the `RULESET` env var. |
+| `--merge-rulesets` | | Compile a directory of YAML files into a single `ruleset.yaml` (requires `--ruleset`). |
+| `--merge-rulesets-gzip` | | Compile a directory of YAML files into a single gzip-compressed `ruleset.gz` (requires `--ruleset`). |
+| `--merge-rulesets-output` | | Output file path for `--merge-rulesets` or `--merge-rulesets-gzip` (requires both `--ruleset` and a merge flag). |
+
+### Examples
+
+Run on a custom port with a local ruleset:
+
+```bash
+./ladder -p 9090 -r ./ruleset.yaml
+```
+
+Merge a directory of rule files into a single ruleset:
+
+```bash
+./ladder --ruleset ./rules/ --merge-rulesets --merge-rulesets-output ./combined.yaml
+```
+
+## Development server
+
+To run Ladder from source during development:
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/everywall/ladder.git
+    cd ladder
+    ```
+  </Step>
+
+  <Step title="Start the server">
+    ```bash
+    RULESET="./ruleset.yaml" go run cmd/main.go
+    ```
+
+    The server starts at [http://localhost:8080](http://localhost:8080). The version reported will be `dev` when running via `go run`.
+  </Step>
+</Steps>
+
+### Live reload with Air
+
+[Air](https://github.com/cosmtrek/air) watches for file changes and restarts the server automatically.
+
+<Steps>
+  <Step title="Install Air">
+    Follow the [Air installation instructions](https://github.com/cosmtrek/air#installation) for your platform.
+  </Step>
+
+  <Step title="Start the live-reload server">
+    ```bash
+    air
+    ```
+
+    Air reads its configuration from `.air.toml` in the project root and restarts Ladder on every file save.
+  </Step>
+</Steps>
+
+<Tip>
+  If you modify styles in `form.html`, run `pnpm build` to regenerate the Tailwind CSS stylesheet. The project uses [pnpm](https://pnpm.io/) as its package manager.
+</Tip>
+
+## Building from source
+
+To produce a production binary from the source tree:
+
+```bash
+go build -o ladder cmd/main.go
+```
+
+The binary is written to `./ladder`. You can then run it like any prebuilt release:
+
+```bash
+./ladder -r https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml
+```
+
+### Cross-compiling
+
+GoReleaser handles cross-compilation for all supported targets. To build manually for a different OS or architecture:
+
+```bash
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o ladder_linux_arm64 cmd/main.go
+```

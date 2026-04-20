@@ -1,0 +1,142 @@
+---
+title: "Ladder environment variables: full configuration reference"
+description: "Complete reference for all Ladder environment variables: port, auth, user agent, ruleset, domain restrictions, FlareSolverr, and logging — with Docker examples."
+---
+
+Ladder is configured entirely through environment variables. There are no configuration files to edit — set the variables you need before starting the server, and Ladder picks them up on startup. Every variable has a sensible default so you can get running with zero configuration, then tune behavior as required.
+
+## All environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `PORT` | `8080` | Port the server listens on. |
+| `PREFORK` | `false` | Spawn multiple Go server processes (one per CPU core). |
+| `USER_AGENT` | `Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)` | User-Agent header sent to upstream sites. |
+| `X_FORWARDED_FOR` | `66.249.66.1` | IP address sent as the `X-Forwarded-For` header. |
+| `USERPASS` | _(empty)_ | Enables HTTP Basic Auth. Format: `username:password`. |
+| `LOG_URLS` | `true` | Log every proxied URL to stdout. |
+| `DISABLE_FORM` | `false` | Hide the URL input form on the homepage. |
+| `FORM_PATH` | _(empty)_ | Absolute path to a custom HTML file that replaces the default form. |
+| `RULESET` | _(empty)_ | Path, URL, directory, or semicolon-separated list pointing to ruleset YAML files. |
+| `EXPOSE_RULESET` | `true` | Expose the loaded ruleset at `/ruleset` so other Ladder instances can use it. |
+| `ALLOWED_DOMAINS` | _(empty)_ | Comma-separated list of domains the proxy will fetch. Empty means no restriction. |
+| `ALLOWED_DOMAINS_RULESET` | `false` | When `true`, domains defined in the ruleset are added to the allow-list. |
+| `FLARESOLVERR_HOST` | _(empty)_ | Base URL of a running FlareSolverr instance (e.g. `http://localhost:8191`). |
+| `HTTP_TIMEOUT` | `15` | Upstream request timeout in seconds. |
+| `NOLOGS` | _(empty)_ | Set to `true` to disable HTTP request logging entirely. |
+| `DEBUG` | _(empty)_ | Set to any value to print debug output during ruleset loading. |
+
+## Variable reference
+
+<ParamField path="env.PORT" type="number" default="8080">
+  TCP port the Ladder HTTP server listens on. Override when running multiple instances on the same host or when the default port is already in use.
+</ParamField>
+
+<ParamField path="env.PREFORK" type="boolean" default="false">
+  When `true`, Ladder forks one process per CPU core and each process listens on the same port. Increases throughput on multi-core hosts at the cost of higher memory usage.
+</ParamField>
+
+<ParamField path="env.USER_AGENT" type="string" default="Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)">
+  Value sent as the `User-Agent` request header to upstream sites. Override to emulate a different browser or crawler. Individual domains can override this further via a [ruleset rule](/configuration/ruleset).
+</ParamField>
+
+<ParamField path="env.X_FORWARDED_FOR" type="string" default="66.249.66.1">
+  IP address sent as the `X-Forwarded-For` header. The default is a well-known Googlebot IP. Set to a different IP or use a ruleset to omit this header per domain.
+</ParamField>
+
+<ParamField path="env.USERPASS" type="string">
+  Enables HTTP Basic Auth when set. The format is `username:password` — for example, `admin:s3cr3t`. Leave empty to disable authentication.
+
+  <Warning>
+    If your Ladder instance is publicly accessible, always set `USERPASS`. Without it, anyone can use your proxy.
+  </Warning>
+</ParamField>
+
+<ParamField path="env.LOG_URLS" type="boolean" default="true">
+  When `true`, each proxied URL is written to the log. Set to `false` to reduce log volume in production.
+</ParamField>
+
+<ParamField path="env.DISABLE_FORM" type="boolean" default="false">
+  When `true`, the URL input form on the homepage is not rendered. Useful when Ladder is used purely as an API proxy.
+</ParamField>
+
+<ParamField path="env.FORM_PATH" type="string">
+  Absolute path to a custom HTML file to use instead of the built-in form. The file is served as-is; no template processing is applied.
+</ParamField>
+
+<ParamField path="env.RULESET" type="string">
+  Where to load ruleset YAML from. Accepts:
+  - A local file path: `/etc/ladder/rules.yaml`
+  - A local directory (all `.yaml`/`.yml` files inside are loaded): `/etc/ladder/rules/`
+  - A remote URL: `https://example.com/ruleset.yaml`
+  - A semicolon-separated combination of the above
+
+  See [Ruleset configuration](/configuration/ruleset) for the YAML format.
+</ParamField>
+
+<ParamField path="env.EXPOSE_RULESET" type="boolean" default="true">
+  When `true`, the merged ruleset is available at `GET /ruleset`. Other Ladder instances can point their `RULESET` variable at this URL to consume the same rules.
+</ParamField>
+
+<ParamField path="env.ALLOWED_DOMAINS" type="string">
+  Comma-separated list of hostnames the proxy is allowed to fetch. When empty, no domain restriction is applied. See [Domain restrictions](/configuration/domain-restrictions) for details.
+</ParamField>
+
+<ParamField path="env.ALLOWED_DOMAINS_RULESET" type="boolean" default="false">
+  When `true`, every domain defined in the loaded ruleset is automatically added to the allow-list. Combined with `ALLOWED_DOMAINS` when both are set.
+</ParamField>
+
+<ParamField path="env.FLARESOLVERR_HOST" type="string">
+  Base URL of a FlareSolverr instance used to bypass Cloudflare challenges (e.g. `http://localhost:8191`). Required when any ruleset rule sets `useFlareSolverr: true`. See [FlareSolverr integration](/advanced/flaresolverr).
+</ParamField>
+
+<ParamField path="env.HTTP_TIMEOUT" type="number" default="15">
+  Maximum time in seconds Ladder will wait for an upstream response before returning an error. Increase this for slow upstream sites; lower it to fail fast.
+</ParamField>
+
+<ParamField path="env.NOLOGS" type="boolean">
+  Set to `true` to disable the per-request log middleware entirely. `LOG_URLS` controls URL-level logging independently; `NOLOGS` disables the broader request log.
+</ParamField>
+
+<ParamField path="env.DEBUG" type="string">
+  Set to any non-empty value to enable verbose debug output during ruleset loading. Useful when diagnosing YAML syntax errors. Has no effect at runtime after startup.
+</ParamField>
+
+## Docker examples
+
+### Running with `docker run`
+
+Pass environment variables using `-e` flags:
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  -e RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml \
+  -e USERPASS=admin:s3cr3t \
+  -e ALLOWED_DOMAINS=example.com,example.org \
+  -e HTTP_TIMEOUT=30 \
+  --name ladder \
+  ghcr.io/everywall/ladder:latest
+```
+
+### docker-compose.yaml
+
+```yaml
+services:
+  ladder:
+    image: ghcr.io/everywall/ladder:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml
+      - USERPASS=admin:s3cr3t
+      - ALLOWED_DOMAINS=example.com,example.org
+      - EXPOSE_RULESET=true
+      - HTTP_TIMEOUT=30
+      - LOG_URLS=true
+    restart: unless-stopped
+```
+
+<Tip>
+  Store sensitive values like `USERPASS` in a `.env` file and reference it with `env_file:` in docker-compose rather than hard-coding credentials in the YAML.
+</Tip>

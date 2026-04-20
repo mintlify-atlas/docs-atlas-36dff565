@@ -1,0 +1,166 @@
+---
+title: "Run Ladder with Docker: containers and Compose setup"
+description: "Pull the Ladder container image and run it standalone or with Docker Compose. Covers image tags, environment variables, volume mounts, and FlareSolverr setup."
+---
+
+Ladder is published as a multi-arch container image to the GitHub Container Registry and supports both `amd64` and `arm64` architectures. You can run it with a single `docker run` command or orchestrate it alongside FlareSolverr using Docker Compose.
+
+<Warning>
+  If your Ladder instance will be publicly accessible, you must set the `USERPASS` environment variable to enable Basic Auth. Without it, anyone on the internet can use your proxy to browse any content — and you will be held responsible. See [Secure your Ladder instance](/deployment/security) for details.
+</Warning>
+
+## Image tags
+
+The container image is hosted at `ghcr.io/everywall/ladder`.
+
+| Tag | When to use |
+|-----|-------------|
+| `ghcr.io/everywall/ladder:latest` | Always tracks the most recent release |
+| `ghcr.io/everywall/ladder:v1.x.x` | Pin to a specific version for reproducible deployments |
+
+<Tabs>
+  <Tab title="Docker">
+
+## Running a single container
+
+The minimal command to start Ladder with the community ruleset:
+
+```bash
+docker run -p 8080:8080 -d \
+  --name ladder \
+  --env RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml \
+  ghcr.io/everywall/ladder:latest
+```
+
+Once running, open [http://localhost:8080](http://localhost:8080) in your browser.
+
+### All environment variables
+
+Pass any of the supported variables as `-e` flags:
+
+```bash
+docker run -p 8080:8080 -d \
+  --name ladder \
+  -e PORT=8080 \
+  -e RULESET=https://raw.githubusercontent.com/everywall/ladder-rules/main/ruleset.yaml \
+  -e PREFORK=false \
+  -e USER_AGENT="Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)" \
+  -e X_FORWARDED_FOR=66.249.66.1 \
+  -e USERPASS=admin:secretpassword \
+  -e LOG_URLS=true \
+  -e DISABLE_FORM=false \
+  -e FORM_PATH=/app/form.html \
+  -e EXPOSE_RULESET=true \
+  -e ALLOWED_DOMAINS=example.com,example.org \
+  -e ALLOWED_DOMAINS_RULESET=false \
+  -e FLARESOLVERR_HOST=http://localhost:8191 \
+  ghcr.io/everywall/ladder:latest
+```
+
+See [Environment variables](/configuration/environment-variables) for a full description of each option.
+
+### Mounting custom files
+
+To use a local `ruleset.yaml` or a custom `form.html`, bind-mount the files into the container:
+
+```bash
+docker run -p 8080:8080 -d \
+  --name ladder \
+  -e RULESET=/app/ruleset.yaml \
+  -e FORM_PATH=/app/form.html \
+  -v ./ruleset.yaml:/app/ruleset.yaml \
+  -v ./form.html:/app/form.html \
+  ghcr.io/everywall/ladder:latest
+```
+
+  </Tab>
+  <Tab title="Docker Compose">
+
+## Running with Docker Compose
+
+Docker Compose is the recommended way to run Ladder alongside FlareSolverr.
+
+Download the official compose file and start the stack:
+
+```bash
+curl https://raw.githubusercontent.com/everywall/ladder/main/docker-compose.yaml --output docker-compose.yaml
+docker compose up -d
+```
+
+### Full docker-compose.yaml
+
+This is the complete compose file shipped with the project:
+
+```yaml
+version: '3'
+services:
+  ladder:
+    image: ghcr.io/everywall/ladder:latest
+    container_name: ladder
+    build: .
+    #restart: always
+    #command: sh -c ./ladder
+    environment:
+      - PORT=8080
+      - RULESET=/app/ruleset.yaml
+      #- ALLOWED_DOMAINS=example.com,example.org
+      #- ALLOWED_DOMAINS_RULESET=false
+      #- EXPOSE_RULESET=true
+      #- PREFORK=false
+      #- DISABLE_FORM=false
+      #- FORM_PATH=/app/form.html
+      #- X_FORWARDED_FOR=66.249.66.1
+      #- USER_AGENT=Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)
+      #- USERPASS=foo:bar
+      - LOG_URLS=true
+      #- GODEBUG=netdns=go
+      - FLARESOLVERR_HOST=http://flaresolverr:8191
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./ruleset.yaml:/app/ruleset.yaml
+      - ./handlers/form.html:/app/form.html
+  
+  # Optional FlareSolverr service for Cloudflare bypass
+  # Uncomment the following lines to enable FlareSolverr
+  flaresolverr:
+   image: ghcr.io/flaresolverr/flaresolverr:latest
+   container_name: flaresolverr
+   restart: unless-stopped
+   environment:
+     - LOG_LEVEL=info
+     - LOG_HTML=false
+     - CAPTCHA_SOLVER=none
+     - TZ=UTC
+   ports:
+     - "8191:8191"
+```
+
+### Services explained
+
+**`ladder`** — the main proxy service. It mounts a local `ruleset.yaml` and `form.html` from the project directory. The `FLARESOLVERR_HOST` variable is pre-wired to the `flaresolverr` service so no additional configuration is needed when you enable both services.
+
+**`flaresolverr`** — an optional headless-browser service that helps Ladder bypass Cloudflare challenges. The service runs on port `8191` and communicates internally with Ladder over the Docker network. See [FlareSolverr integration](/advanced/flaresolverr) for details on enabling it per domain in your ruleset.
+
+### Enabling Basic Auth in Compose
+
+Uncomment and set the `USERPASS` variable in the `ladder` service:
+
+```yaml
+environment:
+  - USERPASS=admin:secretpassword
+```
+
+  </Tab>
+</Tabs>
+
+## Supported architectures
+
+The container image is built for two platforms:
+
+| Architecture | Tag suffix |
+|---|---|
+| `linux/amd64` | _(default)_ |
+| `linux/arm64` | _(default, auto-selected)_ |
+
+Docker pulls the correct variant automatically based on your host platform. No additional flags are needed.

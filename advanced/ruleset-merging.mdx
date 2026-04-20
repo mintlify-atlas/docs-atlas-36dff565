@@ -1,0 +1,130 @@
+---
+title: "Compile multiple ruleset files into one with Ladder"
+description: "Use --merge-rulesets to compile a directory of per-domain YAML files into a single distributable ruleset, optionally gzip-compressed for URL-based distribution."
+---
+
+Ladder includes a built-in CLI utility that compiles a directory of YAML ruleset files into a single distributable file. This is useful when you organise rules across many files — for example, one file per region or domain group — and want to produce one output that Ladder (or other Ladder instances) can load at startup.
+
+## Why merge rulesets
+
+Storing rules as separate files in a directory makes them easier to maintain and review in version control. The merge utility lets you keep that structure in your repository while still serving a single, self-contained file to Ladder instances at runtime.
+
+Common workflows:
+
+- Maintain per-country or per-domain-group files locally, then compile before deployment.
+- Run the merge step in CI to publish a combined ruleset to a URL that other Ladder instances load via `RULESET=https://...`.
+- Compress the output with gzip to reduce download size when distributing via URL.
+
+## CLI flags
+
+All merge flags are non-operational when the server starts normally. They cause Ladder to merge and exit immediately without starting the HTTP server.
+
+| Flag | Description |
+|---|---|
+| `--merge-rulesets` | Compile all YAML files in the `--ruleset` directory into a single YAML ruleset. Outputs to stdout unless `--merge-rulesets-output` is set. |
+| `--merge-rulesets-gzip` | Same as `--merge-rulesets` but writes gzip-compressed output. Requires `--merge-rulesets-output` when running interactively (binary output will corrupt your terminal otherwise). |
+| `--merge-rulesets-output` | Path to write the output file. Works with both `--merge-rulesets` and `--merge-rulesets-gzip`. |
+| `--ruleset` / `-r` | **Required.** Must point to a directory containing `.yaml` files. A single file path is not valid for merge operations. |
+
+The `--ruleset` flag (or the `RULESET` environment variable) must point to a directory. If neither is set, the command exits with an error.
+
+## Examples
+
+```bash
+# Merge all YAML files in ./rulesets/ to stdout
+./ladder --ruleset ./rulesets/ --merge-rulesets
+
+# Merge to a file
+./ladder --ruleset ./rulesets/ --merge-rulesets --merge-rulesets-output ruleset.yaml
+
+# Merge and compress with gzip
+./ladder --ruleset ./rulesets/ --merge-rulesets-gzip --merge-rulesets-output ruleset.gz
+```
+
+<Warning>
+  Running `--merge-rulesets-gzip` without `--merge-rulesets-output` in an interactive terminal will print a warning and exit. Binary gzip output written directly to a terminal will corrupt the session. Always specify an output file when producing gzip.
+</Warning>
+
+## Loading a gzip ruleset
+
+Ladder detects gzip rulesets by file extension. Set `RULESET` to any path or URL ending in `.gz` or `.gzip` and Ladder will decompress it automatically at startup:
+
+```bash
+# Local gzip file
+RULESET=./ruleset.gz ./ladder
+
+# Remote gzip URL
+RULESET=https://example.com/ruleset.gz ./ladder
+```
+
+This works identically with the `--ruleset` CLI flag:
+
+```bash
+./ladder --ruleset ./ruleset.gz
+```
+
+## Community ruleset structure
+
+The `rulesets/` directory in the [ladder-rules repository](https://github.com/everywall/ladder-rules) follows a region-based structure with one subdirectory per country:
+
+```
+rulesets/
+├── ca/    # Canada
+├── ch/    # Switzerland
+├── de/    # Germany
+├── gb/    # United Kingdom
+└── us/    # United States
+```
+
+Each subdirectory contains one or more YAML files scoped to domains from that region. The published `ruleset.yaml` at the root of that repository is the merged output of all these files.
+
+You can adopt the same layout for your own rules and run the merge step in CI to keep the distributed file up to date.
+
+## CI/CD workflow
+
+<Steps>
+  <Step title="Organise rules by directory">
+    Create one YAML file per region or domain group inside a `rulesets/` directory in your repository.
+  </Step>
+  <Step title="Merge in CI">
+    Add a step to your pipeline that runs the merge command and writes the output:
+
+    ```bash
+    ./ladder --ruleset ./rulesets/ --merge-rulesets --merge-rulesets-output dist/ruleset.yaml
+    ```
+
+    Or for a compressed output:
+
+    ```bash
+    ./ladder --ruleset ./rulesets/ --merge-rulesets-gzip --merge-rulesets-output dist/ruleset.gz
+    ```
+  </Step>
+  <Step title="Publish the merged file">
+    Upload `dist/ruleset.yaml` (or `dist/ruleset.gz`) to a publicly accessible URL — for example, a GitHub release asset, an S3 bucket, or a CDN.
+  </Step>
+  <Step title="Reference via URL">
+    Point your Ladder instances at the published URL:
+
+    ```bash
+    RULESET=https://your-cdn.example.com/ruleset.yaml ./ladder
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  If you expose your ruleset publicly and want other Ladder instances to load it directly, set `EXPOSE_RULESET=true` on your instance. This serves your loaded ruleset at `GET /ruleset`, making it easy to share. See [environment variables](/configuration/environment-variables) for details.
+</Tip>
+
+## Related pages
+
+<CardGroup cols={2}>
+  <Card title="Ruleset configuration" icon="list-check" href="/configuration/ruleset">
+    Full reference for ruleset YAML fields and domain matching.
+  </Card>
+  <Card title="Environment variables" icon="sliders" href="/configuration/environment-variables">
+    `RULESET`, `EXPOSE_RULESET`, and all other runtime variables.
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    CLI flag reference and binary download instructions.
+  </Card>
+</CardGroup>
